@@ -1,0 +1,295 @@
+---
+title: "Case Study 2"
+author: "Jack Kortokrax"
+date: "2022-12-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, Importing Librarys}
+library(tidyverse)
+library(reshape2)
+library(GGally)
+library(caret)
+library(ggplot2)
+library(jsonlite)
+library(dbplyr)
+library(dplyr)
+library(class)
+library(caret)
+library(e1071)
+library(tidyr)
+library(scales)
+```
+
+
+```{r, Cleaning Data}
+CS2 <- read.csv(file.choose(),header = TRUE)
+
+summary(CS2)
+CS2 <- na.omit(CS2)
+
+#Turn Attrition into a Binary
+#CS2$Attrition <- ifelse(CS2$Attrition == 'Yes', 1, 0)
+head(CS2)
+
+CS2%>%
+  filter(Attrition=="Yes") %>%
+  keep(is.numeric) %>%                     
+  gather() %>%                             
+  ggplot(aes(value)) +                     
+    facet_wrap(~ key, scales = "free") +   
+    geom_density()                         
+
+```
+
+```{r, Exploring Attrition}
+
+# First ,lets try and understand Attrition Better. My first hypothesis is that Job Satisfaction has the greatest effect on Attrition. I will next develop a linear regression model to test variables with the strongest relationships.
+
+CS2 %>% filter(Department == "Human Resources" | Department == "Sales" | Department == "Research & Development") %>% ggplot(aes(x = Attrition, y = MonthlyIncome, color = Department)) + geom_jitter() + ggtitle("Department by Attrition and MonthlyIncome") +facet_wrap(~Department) + xlab("Attrition")
+
+CS2 %>% filter(EducationField == "Life Sciences" | EducationField == "Medical" | EducationField == "Marketing" | EducationField == "Other" | EducationField == "Technical Degree" | EducationField == "Human Resources") %>% ggplot(aes(x = Attrition, y = MonthlyIncome, color = EducationField)) + geom_jitter() + ggtitle("Education Field by Attrition and MonthlyIncome") + facet_wrap(~EducationField) + xlab("Attrition")
+
+CS2 %>% filter(JobRole == "Sales Executive" | JobRole == "Research Director" | JobRole == "Manufacturing Director" | JobRole == "Research Scientist" | JobRole == "Sales Representative" | JobRole == "Healthcare Representative"| JobRole == "Manager" | JobRole == "Human Resources" | JobRole == "Laboratory Technician") %>% ggplot(aes(x = Attrition, y = MonthlyIncome, color = JobRole)) + geom_jitter() + ggtitle("Job Role by Attrition and MonthlyIncome") +facet_wrap(~JobRole) + xlab("Attrition")
+
+
+# Report the Ratios of those who Attrition in each variable in a table with a count for each designation
+# Department
+Dep_Mean <- CS2 %>% group_by(Department) %>% summarise(mean_Attrition=mean(Attrition=="Yes"),.groups = 'drop')
+Dep_table1 <- aggregate(CS2$Attrition=="Yes", by=list(Department=CS2$Department), FUN=sum)
+Dep_table2 <- aggregate(CS2$Attrition=="Yes" | CS2$Attrition=="No", by=list(Department=CS2$Department), FUN=sum)
+Dep_table3 <- CS2 %>% group_by(Department) %>% summarise(mean_MonthlyIncome=mean(MonthlyIncome),.groups = 'drop')
+Dep_Mean$Count_Attrition <- Dep_table1$x
+Dep_Mean$Total_Population <-Dep_table2$x
+Dep_Mean$Mean_MonthlyIncome <- Dep_table3$mean_MonthlyIncome
+Dep_Mean
+
+data_1a <- Dep_Mean %>% data.frame( x=Dep_Mean$Department, y=abs(Dep_Mean$mean_Attrition))
+ggplot(data_1a, aes(x=x, y=y)) + geom_segment( aes(x=x, xend=x, y=0, yend=y)) + geom_point(size=5, color="black", fill=alpha("blue", 0.3), alpha=0.7, shape=21, stroke=2) + scale_y_continuous(labels=scales::percent) +  ggtitle("Mean Attrition by Department") + xlab("Department")+ ylab("Mean Attrition") + geom_label(aes(label=sprintf("%1.2f%%", mean_Attrition*100)), fill= "orange", vjust=2, size=4 , colour = "black")
+
+data_1b <- Dep_Mean %>% data.frame( x=Dep_Mean$Department, y=abs(Dep_Mean$Mean_MonthlyIncome))
+ggplot(data_1b, aes(x=x, y=y)) + geom_segment( aes(x=x, xend=x, y=0, yend=y)) + geom_point(size=5, color="black", fill=alpha("blue", 0.3), alpha=0.7, shape=21, stroke=2) +  ggtitle("Mean MonthlyIncome by Department") + xlab("Department")+ ylab("Mean MonthlyIncome") + geom_label(aes(label=sprintf("%1.2f$", Mean_MonthlyIncome)), fill= "light green", vjust=2, size=4 , colour = "black")
+# Education Field (likely to drop as a focus variable for older employees)
+Ed_Mean <- CS2 %>% group_by(EducationField) %>% summarise(mean_Attrition=mean(Attrition=="Yes"),.groups = 'drop')
+Ed_table1 <- aggregate(CS2$Attrition=="Yes", by=list(EducationField=CS2$EducationField), FUN=sum)
+Ed_table2 <- aggregate(CS2$Attrition=="Yes" | CS2$Attrition=="No", by=list(EducationField=CS2$EducationField), FUN=sum)
+Ed_table3 <- CS2 %>% group_by(EducationField) %>% summarise(mean_MonthlyIncome=mean(MonthlyIncome),.groups = 'drop')
+Ed_Mean$Count_Attrition <- Ed_table1$x
+Ed_Mean$Total_Population <-Ed_table2$x
+Ed_Mean$Mean_MonthlyIncome <- Ed_table3$mean_MonthlyIncome
+Ed_Mean
+
+data_2a <- Ed_Mean %>% data.frame( x=Ed_Mean$EducationField, y=abs(Ed_Mean$mean_Attrition))
+ggplot(data_2a, aes(x=x, y=y)) + geom_segment( aes(x=x, xend=x, y=0, yend=y)) + geom_point(size=5, color="black", fill=alpha("blue", 0.3), alpha=0.7, shape=21, stroke=2) + scale_y_continuous(labels=scales::percent) +  ggtitle("Mean Attrition by Education Field") + xlab("Education Field")+ ylab("Mean Attrition") + geom_label(aes(label=sprintf("%1.2f%%", mean_Attrition*100)), fill= "orange", vjust=2, size=4 , colour = "black")
+
+data_2b <- Ed_Mean %>% data.frame( x=Ed_Mean$EducationField, y=abs(Ed_Mean$Mean_MonthlyIncome))
+ggplot(data_2b, aes(x=x, y=y)) + geom_segment( aes(x=x, xend=x, y=0, yend=y)) + geom_point(size=5, color="black", fill=alpha("blue", 0.3), alpha=0.7, shape=21, stroke=2) +  ggtitle("Mean MonthlyIncome by Education Field") + xlab("Education Field")+ ylab("Mean MonthlyIncome") + geom_label(aes(label=sprintf("%1.2f$", Mean_MonthlyIncome)), fill= "light green", vjust=2, size=4 , colour = "black")
+# Job Role
+Job_Mean <- CS2 %>% group_by(JobRole) %>% summarise(mean_Attrition=mean(Attrition=="Yes"),.groups = 'drop')
+Job_table1 <- aggregate(CS2$Attrition=="Yes", by=list(JobRole=CS2$JobRole), FUN=sum)
+Job_table2 <- aggregate(CS2$Attrition=="Yes" | CS2$Attrition=="No", by=list(JobRole=CS2$JobRole), FUN=sum)
+Job_table3 <- CS2 %>% group_by(JobRole) %>% summarise(mean_MonthlyIncome=mean(MonthlyIncome),.groups = 'drop')
+Job_Mean$Count_Attrition <- Job_table1$x
+Job_Mean$Total_Population <-Job_table2$x
+Job_Mean$Mean_MonthlyIncome <- Job_table3$mean_MonthlyIncome
+Job_Mean
+
+data_3a <- Job_Mean %>% data.frame( x=Job_Mean$JobRole, y=abs(Job_Mean$mean_Attrition))
+ggplot(data_3a, aes(x=x, y=y)) + geom_segment( aes(x=x, xend=x, y=0, yend=y)) + geom_point(size=5, color="black", fill=alpha("blue", 0.3), alpha=0.7, shape=21, stroke=2) + scale_y_continuous(labels=scales::percent) +  ggtitle("Mean Attrition by Job Role") + xlab("Job Role")+ ylab("Mean Attrition") + geom_label(aes(label=sprintf("%1.2f%%", mean_Attrition*100)), fill= "orange", vjust=2, size=4 , colour = "black")
+
+data_3b <- Job_Mean %>% data.frame( x=Job_Mean$JobRole, y=abs(Job_Mean$Mean_MonthlyIncome))
+ggplot(data_3b, aes(x=x, y=y)) + geom_segment( aes(x=x, xend=x, y=0, yend=y)) + geom_point(size=5, color="black", fill=alpha("blue", 0.3), alpha=0.7, shape=21, stroke=2) +  ggtitle("Mean MonthlyIncome by Jop Role") + xlab("Job Role")+ ylab("Mean MonthlyIncome") + geom_label(aes(label=sprintf("%1.2f$", Mean_MonthlyIncome)), fill= "light green", vjust=2, size=4 , colour = "black")
+# Those in Sales have the highest Attrition.
+
+
+# Age Group Analysis for 18-60 years old: Group by 18-25, and then every 6 years.
+CS2$Age_Bin <- cut(CS2$Age, breaks=c(18, 22, 26, 30, 34, 38, 42, 46, 50, 54, 61), right = F)
+Age_Mean <- CS2 %>% group_by(Age_Bin) %>% summarise(mean_Attrition=mean(Attrition=="Yes"),.groups = 'drop')
+table1 <- aggregate(CS2$Attrition=="Yes", by=list(Age_Bin=CS2$Age_Bin), FUN=sum)
+table2 <- aggregate(CS2$Attrition=="Yes" | CS2$Attrition=="No", by=list(Age_Bin=CS2$Age_Bin), FUN=sum)
+table3 <- CS2 %>% group_by(Age_Bin) %>% summarise(mean_MonthlyIncome=mean(MonthlyIncome),.groups = 'drop')
+Age_Mean$Count_Attrition <- table1$x
+Age_Mean$Total_Population <-table2$x
+Age_Mean$Mean_MonthlyIncome <- table3$mean_MonthlyIncome
+Age_Mean
+
+data_a <- Age_Mean %>% data.frame( x=Age_Mean$Age_Bin, y=abs(Age_Mean$mean_Attrition))
+ggplot(data_a, aes(x=x, y=y)) + geom_segment( aes(x=x, xend=x, y=0, yend=y)) + geom_point(size=5, color="black", fill=alpha("blue", 0.3), alpha=0.7, shape=21, stroke=2) + scale_y_continuous(labels=scales::percent) +  ggtitle("Mean Attrition by Age Group") + xlab("Age Group")+ ylab("Mean Attrition") + geom_label(aes(label=sprintf("%1.2f%%", mean_Attrition*100)), fill= "orange", vjust=2, size=4 , colour = "black")
+
+data_b <- Age_Mean %>% data.frame( x=Age_Mean$Age_Bin, y=abs(Age_Mean$Mean_MonthlyIncome))
+ggplot(data_b, aes(x=x, y=y)) + geom_segment( aes(x=x, xend=x, y=0, yend=y)) + geom_point(size=5, color="black", fill=alpha("blue", 0.3), alpha=0.7, shape=21, stroke=2) +  ggtitle("Mean MonthlyIncome by Age Group") + xlab("Age Group")+ ylab("Mean MonthlyIncome") + geom_label(aes(label=sprintf("%1.2f$", Mean_MonthlyIncome)), fill= "light green", vjust=2, size=4 , colour = "black")
+# There is a contrary analysis to observing attrition by Age. Upon first glance we see the most attrition occur between the ages 26-38 with the highest amount found amount individuals 30-34. However, when we observe the weighted totals, we see that the age group 18-22 experiences the most Attrition, which beats the sum total of the age range 26-38.
+
+```
+
+
+```{r, KNN}
+#KNN Test
+  # Testing Variables
+  # I would first like to test if Job Satisfaction and Age effect Attrition.
+df1_CS2 = data.frame(JobSatisfaction = CS2$JobSatisfaction, Age= CS2$Age, StandardHours = CS2$StandardHours, WorkLifeBalance = CS2$WorkLifeBalance,JobInvolvment = CS2$JobInvolvement, Department= CS2$Department, JobRole= CS2$JobRole,YearsAtCompany = CS2$YearsAtCompany, YearsSinceLastPromotion  = CS2$YearsSinceLastPromotion, YearsWithCurrManager = CS2$YearsWithCurrManager,OverTime= CS2$OverTime, TotalWorkingYears= CS2$TotalWorkingYears, EnvironmentSatisfaction= CS2$EnvironmentSatisfaction, YearsInCurrentRole = CS2$YearsInCurrentRole, NumCompaniesWorked= CS2$NumCompaniesWorked, Overtime= CS2$OverTime,JobLevel= CS2$JobLevel,PercentSalaryHike = CS2$PercentSalaryHike, MonthlyIncome = CS2$MonthlyIncome,RelationshipSatisfaction= CS2$RelationshipSatisfaction,  Education= CS2$Education,Attrition= CS2$Attrition)
+confusionMatrix(table(knn.cv(df1_CS2[,1:2],df1_CS2$Attrition, k = 10),df1_CS2$Attrition))
+
+  # Years At Company, Since Last Promotion, With Current Manager, and Total Working Years all have the same relationship and effect on Attrition.So lets combine these. I'm finding through my investigation that a KNN model may not be the best fit to predict Salaries or Attrition.
+
+  #Find the Best KNN
+trainInd = sample(seq(1,871,1), .7*871)
+na.omit(CS2)
+train = CS2[trainInd,]
+test = CS2[-trainInd,]
+classifications = knn(train[,c(1,2)],test[,c(1,2)],train$Attrition,prob = TRUE, k = 3)
+confusionMatrix(table(classifications,test$Attrition))
+iterations = 500 
+numks = 30
+masterAcc = matrix(nrow = iterations, ncol = numks)
+splitPerc = .7
+for(j in 1:iterations) 
+{
+accs = data.frame(accuracy = numeric(30), k = numeric(30))
+trainIndices = sample(1:dim(CS2)[1],round(splitPerc * dim(CS2)[1]))
+train = CS2[trainIndices,]
+test = CS2[-trainIndices,]
+for(i in 1:numks)
+{
+  classifications = knn(train[,c(1,2)],test[,c(1,2)],train$Attrition, prob = T, k = i)
+  table(classifications,test$Attrition)
+  CM = confusionMatrix(table(classifications,test$Attrition))
+  masterAcc[j,i] = CM$overall[1]
+}
+}
+MeanAcc = colMeans(masterAcc)
+plot(seq(1,numks,1),MeanAcc, type = "l")
+
+  #Some Predictions of Attrition based on my age and possible job satisfaction. This best displays the effect job and Age have on Attrition.
+  #Try to find Predicted Attrition Via Job Satisfaction and my Age using tested KNN:
+dfTest_1 = data.frame(JobSatisfaction = 1, Age= 23 )
+knn(df1_CS2[,1:2],dfTest_1,df1_CS2$Attrition, prob = TRUE, k = 11)
+
+dfTest_2 = data.frame(JobSatisfaction = 2, Age= 23  )
+knn(df1_CS2[,1:2],dfTest_2,df1_CS2$Attrition, prob = TRUE, k = 11)
+
+dfTest_3 = data.frame(JobSatisfaction = 3, Age= 23 )
+knn(df1_CS2[,1:2],dfTest_3,df1_CS2$Attrition, prob = TRUE, k = 11)
+
+dfTest_4 = data.frame(JobSatisfaction = 4, Age= 23  )
+knn(df1_CS2[,1:2],dfTest_3,df1_CS2$Attrition, prob = TRUE, k = 11)
+  # It's interesting that someone who is 23 is most likely to Attrition and Job Satisfaction Level 2 rather than Level 1.
+
+
+```
+
+
+
+```{r,NB Model}
+
+# Examining the Department With the Highest Attrition Rate and Predicting their Attrition and likely Salary
+  #Sales Reps:
+model = naiveBayes(MonthlyIncome~.,data = CS2)
+predict(model,CS2[,c(1,2)])
+df_Sales_Rep = data.frame(Department = "Sales", JobRole = "Sales Representative")
+predict(model,df_Sales_Rep) 
+predict(model,df_Sales_Rep, type = "raw") 
+
+model = naiveBayes(Attrition~.,data = CS2)
+predict(model,CS2[,c(1,2)])
+df_Sales_Rep = data.frame(Department = "Sales", JobRole = "Sales Representative")
+predict(model,df_Sales_Rep) 
+predict(model,df_Sales_Rep, type = "raw")
+  #Sales Exec:
+model = naiveBayes(MonthlyIncome~.,data = CS2)
+predict(model,CS2[,c(1,2)])
+df_Sales_Exec = data.frame(Department = "Sales", JobRole = "Sales Executive")
+predict(model,df_Sales_Exec) 
+predict(model,df_Sales_Exec, type = "raw")
+
+model = naiveBayes(Attrition~.,data = CS2)
+predict(model,CS2[,c(1,2)])
+df_Sales_Exec = data.frame(Department = "Sales", JobRole = "Sales Executive")
+predict(model,df_Sales_Exec) 
+predict(model,df_Sales_Exec, type = "raw")
+  #Manager:
+model = naiveBayes(MonthlyIncome~.,data = CS2)
+predict(model,CS2[,c(1,2)])
+df_Sales_MG = data.frame(Department = "Sales", JobRole = "Manager")
+predict(model,df_Sales_MG) 
+predict(model,df_Sales_MG, type = "raw")
+
+model = naiveBayes(Attrition~.,data = CS2)
+predict(model,CS2[,c(1,2)])
+df_Sales_MG = data.frame(Department = "Sales", JobRole = "Manager")
+predict(model,df_Sales_MG) 
+predict(model,df_Sales_MG, type = "raw")
+  #The Highest Likelihood for Attrition comes from Sales Representative. Our model predicts that about 50% of Sales Representatives will Attrition from their roles.
+
+#Basic Prediction of set variables that again display the strong affects of Age and Job Satisfaction:
+dfCS2 = data.frame(Age= CS2$Age, JobSatisfaction= CS2$JobSatisfaction, YearsInCurrentRole= CS2$YearsInCurrentRole, Attrition = CS2$Attrition)
+dfCS2
+#Training Sets
+trainInd = sample(seq(1,871,1), .7*871)
+train = dfCS2[trainInd,]
+test = dfCS2[-trainInd,]
+#JobSatisfaction 1;
+model = naiveBayes(dfCS2[,c(1,2)],dfCS2$Attrition)
+predict(model,data.frame(Age = 23, JobSatisfaction = 1), type = "raw")
+#JobSatisfaction 2;
+model = naiveBayes(dfCS2[,c(1,2)],dfCS2$Attrition)
+predict(model,data.frame(Age = 23, JobSatisfaction = 2), type = "raw")
+#JobSatisfaction 3;
+model = naiveBayes(dfCS2[,c(1,2)],dfCS2$Attrition)
+predict(model,data.frame(Age = 23, JobSatisfaction = 3), type = "raw")
+#JobSatisfaction 4;
+model = naiveBayes(dfCS2[,c(1,2)],dfCS2$Attrition)
+predict(model,data.frame(Age = 23, JobSatisfaction = 4), type = "raw")
+
+######################
+# I feel more confident in terms of obtaining a reliable interval with a Naive Bayes Model, but I feel less control over my variables. After exploring the KNN and Naive Bayes model I believe that a Linear Regression Model will best capture the Salary and Attrition of a given individual.
+```
+
+
+```{r, Linear Regression Model}
+
+
+######################
+######################
+#Attrition
+CS2$Attrition_Binary <- ifelse(CS2$Attrition == 'Yes', 1, 0)
+train( Attrition_Binary ~ JobRole +  Age + JobLevel + MonthlyIncome + PercentSalaryHike + YearsInCurrentRole + YearsAtCompany + YearsSinceLastPromotion + YearsWithCurrManager, method = "lm", data = CS2, trControl = trainControl(method = "LOOCV"))
+fit_Attr <- lm(Attrition_Binary ~  JobRole +  Age + JobLevel + MonthlyIncome + PercentSalaryHike + YearsInCurrentRole + YearsAtCompany + YearsSinceLastPromotion + YearsWithCurrManager, data=CS2)
+summary(fit_Attr)
+confint(fit_Attr)
+fit_Attr
+
+
+set.seed(200)
+train <- CS2[sample, ]
+test <- CS2[!sample, ]
+
+Model_Preds = predict(fit_Attr, newdata = test)
+as.data.frame(Model_Preds)
+
+CS2_NoAttrition <- read.csv(file.choose(),header = TRUE)
+train_NoAttrition <- CS2_NoAttrition[sample, ]
+test_NoAttrition <- CS2_NoAttrition[!sample, ]
+Model_Preds = predict(fit_Attr, newdata = test_NoAttrition)
+Model_Preds
+
+
+
+#write.csv(DataFrame Name, "Path to export the DataFrame\\File Name.csv", row.names=FALSE)
+
+
+#Monthly_Income
+train( MonthlyIncome ~ Department +  JobLevel + YearsAtCompany + PercentSalaryHike + BusinessTravel + Education + JobRole + DailyRate + Age + YearsInCurrentRole, method = "lm", data = CS2, trControl = trainControl(method = "LOOCV"))
+fit_MI <- lm(MonthlyIncome ~  Department + JobLevel + YearsAtCompany + PercentSalaryHike + BusinessTravel + Education + JobRole + DailyRate + Age + YearsInCurrentRole, data=CS2)
+summary(fit_MI)
+confint(fit_MI)
+fit_MI
+
+#write.csv(DataFrame Name, "Path to export the DataFrame\\File Name.csv", row.names=FALSE)
+
+```
+
